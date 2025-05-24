@@ -81,9 +81,11 @@ class InsectDataStore:
             self.event_trends['1min'][event][species] += 1
             self.species_trends['1min'][species] += 1
             self.time_windows_data['1min'][(species, role)].append(event)
+            self.time_windows_data['1min'][(species)]
 
         if now - event_time <= timedelta(minutes=2):
             self.time_windows_data['2min'][(species, role)].append(event)
+            self.time_windows_data['2min'][(species)]
 
 
         if now - event_time <= timedelta(minutes=5):
@@ -91,6 +93,7 @@ class InsectDataStore:
             self.event_trends['5min'][event][species] += 1
             self.species_trends['5min'][species] += 1
             self.time_windows_data['5min'][(species, role)].append(event)
+            self.time_windows_data['5min'][(species)]
 
         if now - event_time <= timedelta(minutes=15):
             self.time_windows['15min'][(species, role)] += 1
@@ -161,6 +164,13 @@ class InsectDataStore:
                 return insects[:limit] if limit else insects
             return []
 
+    def cantidad(self, window):
+        with self.lock:
+            if window not in self.time_windows_data:
+                raise ValueError("Ventana no válida. Usar: '1min', '2min', '5min'")
+            else:
+                return self.time_windows_data[window]
+
     def query_by_habitat_and_event(self, habitat, event, limit=10):
         """Consulta insectos por hábitat y evento"""
         with self.lock:
@@ -221,6 +231,10 @@ def handle_query_client(conn, data_store):
                 window = query["params"]["window"]
                 data = data_store.get_insects_in_time_window(window)
                 response = {"status": "ok", "data": data}
+            elif query["type"] == "cantidad":
+                window = query["params"]["window"]
+                cantidad = data_store.cantidad(window)
+                response = {"status": "ok", "data": cantidad}
 
             conn.sendall(pickle.dumps(response))
     except Exception as e:

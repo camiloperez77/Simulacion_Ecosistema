@@ -1,6 +1,7 @@
 import socket
 import pickle
 from tabulate import tabulate
+from hyperloglog import HyperLogLog
 
 from model.bloomfilter import BloomFilter
 
@@ -126,6 +127,29 @@ def query_bloom_filter(window, specie, rol, even):
     else:
         print(f"'{bf}' definitivamente no está en el conjunto.")
 
+def estimate_unique_species(window):
+    query = {"type": "cantidad", "params": {"window": window}}
+    result = send_query(query)
+    if result["status"] != "ok":
+        print(f"Error: {result.get('message', 'Desconocido')}")
+        return
+
+    species_dict = result["data"]
+
+    if not species_dict:
+        print("No se encontraron datos para esa ventana de tiempo.")
+        return
+
+    hll = HyperLogLog(b=10)
+
+    for species in species_dict.keys():
+        hll.add(species)
+
+    estimated_unique = hll.estimate()
+
+    print(f"\n===== ESTIMACIÓN DE ESPECIES ÚNICAS EN VENTANA '{window}' =====")
+    print(f"Estimación de especies distintas: {estimated_unique}")
+
 
 def show_menu():
     print("\n===== CLIENTE DE CONSULTA DE INSECTOS =====")
@@ -133,6 +157,7 @@ def show_menu():
     print("2. Consultar por especie")
     print("3. Consultar por hábitat y evento")
     print("4. Aplicar Bloom Filter")
+    print("5 Estimar numero de especies unicas (Hiperloglog)")
     print("0. Salir")
 
 
@@ -160,6 +185,9 @@ def main():
             rol = input("Introduce rol (worker, queen, soldier, scout): ")
             even = input("Introduce evento (birth, death, predator attack): ")
             query_bloom_filter(window, specie, rol, even)
+        elif choice == "5":
+            window = input("Ventana de tiempo (1min, 2min, 5min): ")
+            estimate_unique_species(window)
         else:
             print("Opción no válida. Inténtalo de nuevo.")
 
