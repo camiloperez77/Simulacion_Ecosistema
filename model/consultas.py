@@ -5,8 +5,13 @@ from hyperloglog import HyperLogLog
 from dgim import DGIM
 
 from model.bloomfilter import BloomFilter
+import socket
+import pickle
+from tabulate import tabulate
 
+from minwisehashing import MinWiseHashing
 SOCKET_PATH = "/tmp/insect_query_socket"
+
 
 def send_query(query):
     try:
@@ -173,6 +178,59 @@ def estimate_unique_species(window):
     print(f"\n===== ESTIMACIÓN DE ESPECIES ÚNICAS EN VENTANA '{window}' =====")
     print(f"Estimación de especies distintas: {estimated_unique}")
 
+def query_minwise(window, specie, rol, even):
+    query = {"type": "minwise", "params": {"window": window}}
+    result = send_query(query)
+
+    if result["status"] != "ok":
+        print(f"Error: {result.get('message', 'Desconocido')}")
+        return
+
+    data = result["data"]
+    if not data:
+        print(" No hay datos en la ventana seleccionada.")
+        return
+
+    print(f" Datos recuperados para ventana '{window}':")
+    print(f"Número total de combinaciones: {sum(len(events) for events in data.values())}")
+
+    # Crear MinWiseHashing con datos de la ventana
+    minwise_actual = MinWiseHashing()
+    for (species, role), eventos in data.items():
+        for event in eventos:
+            insect = {
+                "species": species,
+                "role": role,
+                "age": 0
+            }
+            minwise_actual.add_insect(insect)
+
+    # Crear MinWiseHashing para el evento ingresado
+    insecto_nuevo = {
+        "species": specie,
+        "role": rol,
+        "age": 0
+    }
+    minwise_nuevo = MinWiseHashing()
+    minwise_nuevo.add_insect(insecto_nuevo)
+
+    # Calcular similitud Jaccard
+    similitud = minwise_actual.estimate_jaccard_similarity(minwise_nuevo)
+    print(f"\n Similitud Jaccard estimada: {similitud:.2f}")
+
+    # decisión según umbral de similitud
+    UMBRAL = 0.5
+
+    if similitud >= UMBRAL:
+        print("El evento es MUY similar a eventos recientes. Podría ser redundante.")
+    else:
+        print("El evento parece ser nuevo (baja similitud con registros recientes).")
+
+
+    muestra = minwise_actual.get_representative_sample(sample_size=3)
+    print("\n Muestra representativa:")
+    for i, m in enumerate(muestra, 1):
+        print(f"{i}. {m}")
 
 def show_menu():
     print("\n===== CLIENTE DE CONSULTA DE INSECTOS =====")
@@ -182,6 +240,7 @@ def show_menu():
     print("4. Aplicar Bloom Filter")
     print("5 Estimar numero de especies unicas (Hiperloglog)")
     print("6 Aplicar DGIM")
+    print("7 aplicar minwise")
     print("0. Salir")
 
 
@@ -216,6 +275,12 @@ def main():
             window = input("Ventana de tiempo (1min, 2min, 5min): ")
             estimate_unique_species(window)
             query_dgim_filter(window)
+        elif choice == "7":
+            window = input("Ventana de tiempo (1min, 2min, 5min): ")
+            specie = input("Introduce especie (ant, bee, butterfly, spider): ")
+            rol = input("Introduce rol (worker, queen, soldier, scout): ")
+            even = input("Introduce evento (birth, death, predator attack): ")
+            query_minwise(window, specie, rol, even)
         else:
             print("Opción no válida. Inténtalo de nuevo.")
 
