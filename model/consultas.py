@@ -2,6 +2,7 @@ import socket
 import pickle
 from tabulate import tabulate
 from hyperloglog import HyperLogLog
+from dgim import DGIM
 
 from model.bloomfilter import BloomFilter
 
@@ -127,6 +128,28 @@ def query_bloom_filter(window, specie, rol, even):
     else:
         print(f"'{bf}' definitivamente no está en el conjunto.")
 
+def query_dgim_filter(window):
+    # window: string "1min", "2min", "5min"
+    query = {"type": "dgim_filter", "params": {"window": window}}
+    result = send_query(query)
+
+    if result["status"] != "ok":
+        print(f"Error: {result.get('message', 'Desconocido')}")
+        return
+
+    data = result["data"]
+    print(data)
+    window_seconds = {
+        "1min": 60,
+        "2min": 120,
+        "5min": 300,
+        "1hour": 3600
+    }.get(window, 300)
+
+    dgim = DGIM(window_size_seconds=window_seconds)
+    estimated = dgim.estimate_from_data(data)
+    print(f"Estimación de ataques de depredador en ventana '{window}': {estimated}")
+
 def estimate_unique_species(window):
     query = {"type": "cantidad", "params": {"window": window}}
     result = send_query(query)
@@ -158,6 +181,7 @@ def show_menu():
     print("3. Consultar por hábitat y evento")
     print("4. Aplicar Bloom Filter")
     print("5 Estimar numero de especies unicas (Hiperloglog)")
+    print("6 Aplicar DGIM")
     print("0. Salir")
 
 
@@ -188,6 +212,10 @@ def main():
         elif choice == "5":
             window = input("Ventana de tiempo (1min, 2min, 5min): ")
             estimate_unique_species(window)
+        elif choice == "6":
+            window = input("Ventana de tiempo (1min, 2min, 5min): ")
+            estimate_unique_species(window)
+            query_dgim_filter(window)
         else:
             print("Opción no válida. Inténtalo de nuevo.")
 

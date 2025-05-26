@@ -242,6 +242,10 @@ def handle_query_client(conn, data_store):
                 window = query["params"]["window"]
                 cantidad = data_store.cantidad(window)
                 response = {"status": "ok", "data": cantidad}
+            elif query["type"] == "dgim_filter":
+                window = query["params"]["window"]  # Ejemplo: "5min" o "1hour"
+                data = data_store.get_insects_in_time_window(window)
+                response = {"status": "ok", "data": data}
 
             conn.sendall(pickle.dumps(response))
     except Exception as e:
