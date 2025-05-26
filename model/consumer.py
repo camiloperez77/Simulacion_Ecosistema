@@ -6,6 +6,15 @@ import pickle
 import socket
 import os
 from datetime import datetime, timedelta
+from collections import d
+from confluent_kafka import Consumer
+import json
+import time
+import threading
+import pickle
+import socket
+import os
+from datetime import datetime, timedelta
 from collections import defaultdict
 
 # Configuración del consumidor
@@ -244,6 +253,10 @@ def handle_query_client(conn, data_store):
                 response = {"status": "ok", "data": cantidad}
             elif query["type"] == "dgim_filter":
                 window = query["params"]["window"]  # Ejemplo: "5min" o "1hour"
+                data = data_store.get_insects_in_time_window(window)
+                response = {"status": "ok", "data": data}
+            elif query["type"] == "minwise":
+                window = query["params"]["window"]
                 data = data_store.get_insects_in_time_window(window)
                 response = {"status": "ok", "data": data}
 
