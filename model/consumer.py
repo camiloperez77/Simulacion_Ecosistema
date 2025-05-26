@@ -81,11 +81,9 @@ class InsectDataStore:
             self.event_trends['1min'][event][species] += 1
             self.species_trends['1min'][species] += 1
             self.time_windows_data['1min'][(species, role)].append(event)
-            self.time_windows_data['1min'][(species)]
 
         if now - event_time <= timedelta(minutes=2):
             self.time_windows_data['2min'][(species, role)].append(event)
-            self.time_windows_data['2min'][(species)]
 
 
         if now - event_time <= timedelta(minutes=5):
@@ -93,7 +91,6 @@ class InsectDataStore:
             self.event_trends['5min'][event][species] += 1
             self.species_trends['5min'][species] += 1
             self.time_windows_data['5min'][(species, role)].append(event)
-            self.time_windows_data['5min'][(species)]
 
         if now - event_time <= timedelta(minutes=15):
             self.time_windows['15min'][(species, role)] += 1
@@ -104,13 +101,6 @@ class InsectDataStore:
             self.time_windows['1hour'][(species, role)] += 1
             self.event_trends['1hour'][event][species] += 1
             self.species_trends['1hour'][species] += 1
-
-    def clean_window(self, window: str):
-        if window in self.time_windows_data:
-            self.time_windows_data[window].clear()
-            return window
-        else:
-            raise ValueError(f"Ventana no válida: {window}. Debe ser '1min', '2min' o '5min'.")
 
     def clean_old_data(self, max_age_hours=2):
         """Elimina datos más antiguos que el límite especificado"""
@@ -170,13 +160,6 @@ class InsectDataStore:
                 insects = list(self.insects_by_species[species].values())
                 return insects[:limit] if limit else insects
             return []
-
-    def cantidad(self, window):
-        with self.lock:
-            if window not in self.time_windows_data:
-                raise ValueError("Ventana no válida. Usar: '1min', '2min', '5min'")
-            else:
-                return self.time_windows_data[window]
 
     def query_by_habitat_and_event(self, habitat, event, limit=10):
         """Consulta insectos por hábitat y evento"""
@@ -238,10 +221,10 @@ def handle_query_client(conn, data_store):
                 window = query["params"]["window"]
                 data = data_store.get_insects_in_time_window(window)
                 response = {"status": "ok", "data": data}
-            elif query["type"] == "cantidad":
-                window = query["params"]["window"]
-                cantidad = data_store.cantidad(window)
-                response = {"status": "ok", "data": cantidad}
+            elif query["type"] == "dgim_filter":
+                window = query["params"]["window"]  # Ejemplo: "5min" o "1hour"
+                data = data_store.get_insects_in_time_window(window)
+                response = {"status": "ok", "data": data}
 
             conn.sendall(pickle.dumps(response))
     except Exception as e:
@@ -281,13 +264,7 @@ def process_kafka_messages(data_store):
     # Contador para control de flujo
     message_count = 0
     last_cleanup_time = time.time()
-    last_cleanup_time_1m = time.time()
-    last_cleanup_time_2m = time.time()
-    last_cleanup_time_5m = time.time()
-    cleanup_interval = 1800  # Segundos entre limpiezas
-    cleanup_interval_1m = 60
-    cleanup_interval_2m = 120
-    cleanup_interval_5m = 300
+    cleanup_interval = 120  # Segundos entre limpiezas
 
     try:
         while True:
@@ -298,21 +275,6 @@ def process_kafka_messages(data_store):
                 removed = data_store.clean_old_data()
                 print(f"🧹 Limpieza realizada: {removed} registros antiguos eliminados")
                 last_cleanup_time = time.time()
-
-            if time.time() - last_cleanup_time_1m > cleanup_interval_1m:
-                removed = data_store.clean_window("1min")
-                print(f"🧹 Limpieza realizada: {removed} registros antiguos eliminados")
-                last_cleanup_time_1m = time.time()
-
-            if time.time() - last_cleanup_time_2m > cleanup_interval_2m:
-                removed = data_store.clean_window("2min")
-                print(f"🧹 Limpieza realizada: {removed} registros antiguos eliminados")
-                last_cleanup_time_2m = time.time()
-
-            if time.time() - last_cleanup_time_5m > cleanup_interval_5m:
-                removed = data_store.clean_window("5min")
-                print(f"🧹 Limpieza realizada: {removed} registros antiguos eliminados")
-                last_cleanup_time_5m = time.time()
 
             if msg is None:
                 continue
@@ -329,13 +291,13 @@ def process_kafka_messages(data_store):
                 data_store.add_insect(data)
 
                 # Solo mostrar cada 1000 mensajes para no saturar la terminal
-                if message_count % 20 == 0:
+                if message_count % 10 == 0:
                     print(
                         f"🔄 Procesados {message_count} mensajes. Último: {data['insect']['species']} ({data['event']})")
 
                     # Mostrar algunas estadísticas de las ventanas de tiempo
                     stats = data_store.get_stats()
-                    print(f"📊 Últimos minutos: {sum(stats['time_windows']['1min'].values())} eventos")
+                    print(f"📊 Últimos minuto: {sum(stats['time_windows']['1min'].values())} eventos")
                     # print(f"📊 Últimos 5 minutos: {sum(stats['time_windows']['5min'].values())} eventos")
 
             except Exception as e:
