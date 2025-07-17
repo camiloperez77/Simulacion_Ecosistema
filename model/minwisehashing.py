@@ -34,37 +34,3 @@ class MinWiseHashing:
         matches = sum(1 for i in range(self.num_hashes)
                       if self.min_values[i] == other_minwise.min_values[i])
         return matches / self.num_hashes
-
-# Crear dos objetos MinWiseHashing
-#minwise1 = MinWiseHashing(num_hashes=128)
-#minwise2 = MinWiseHashing(num_hashes=128)
-
-# Datos de ejemplo (puedes cambiar o ampliar)
-#insects1 = [
-#    {"species": "spider", "role": "queen", "age": 2},
-#    {"species": "ant", "role": "soldier", "age": 1},
-#    {"species": "bee", "role": "scout", "age": 3},
-#]
-
-#insects2 = [
-#    {"species": "spider", "role": "queen", "age": 2},
-#    {"species": "bee", "role": "soldier", "age": 1},
-#]
-
-# Agregar insectos a minwise1
-#for insect in insects1:
-#    minwise1.add_insect(insect)
-
-# Agregar insectos a minwise2
-#for insect in insects2:
-#    minwise2.add_insect(insect)
-
-# Obtener similitud estimada Jaccard
-#sim = minwise1.estimate_jaccard_similarity(minwise2)
-#print(f"Similitud Jaccard estimada: {sim:.2f}")
-
-# Obtener muestra representativa de minwise1
-#sample = minwise1.get_representative_sample(sample_size=2)
-#print("Muestra representativa de minwise1:")
-#for s in sample:
-#    print(s)

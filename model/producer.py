@@ -26,7 +26,9 @@ def generate_insect():
                 "latitude": float(fake.latitude()),   # conversión a float
                 "longitude": float(fake.longitude())  # conversión a float
             }
-        }
+        },
+        "ecologicalImpact": random.randint(-50, 50),
+        "populationDensity": random.randint(1, 1000)
     }
 
 conf = {
@@ -50,7 +52,7 @@ try:
         producer.produce('insect-events', value=json_str.encode('utf-8'))
         print("✅ Evento enviado:", data)
         producer.poll(0)  # Libera mensajes encolados
-        time.sleep(random.uniform(2, 3))
+        time.sleep(random.uniform(0.2, 0.5))
 
 except KeyboardInterrupt:
     print("🛑 Interrupción por el usuario. Cerrando producer...")

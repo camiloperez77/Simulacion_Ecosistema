@@ -6,16 +6,8 @@ import pickle
 import socket
 import os
 from datetime import datetime, timedelta
-from collections import d
-from confluent_kafka import Consumer
-import json
-import time
-import threading
-import pickle
-import socket
-import os
-from datetime import datetime, timedelta
 from collections import defaultdict
+from random_walk_utils import construir_grafo_desde_eventos, random_walk_habitat, visualizar_camino
 
 # Configuración del consumidor
 conf = {
@@ -33,6 +25,8 @@ class InsectDataStore:
         self.insects_by_role = defaultdict(dict)
         self.insects_by_habitat = defaultdict(dict)
         self.insects_by_event = defaultdict(dict)
+        self.insect_by_ecological_impact = defaultdict(dict)
+        self.insect_population_density = defaultdict(dict)
 
         # Para ventanas de tiempo
         self.time_windows = {
@@ -65,6 +59,8 @@ class InsectDataStore:
             habitat = insect_data["location"]["habitat"]
             event = insect_data["event"]
             event_time = datetime.strptime(insect_data["eventTime"].split()[0], "%Y-%m-%dT%H:%M:%S")
+            ecological_impact = insect_data["ecologicalImpact"]
+            population_density = insect_data["populationDensity"]
 
             # Actualizar tablas hash principales
             self.insects_by_id[insect_id] = insect_data
@@ -72,6 +68,8 @@ class InsectDataStore:
             self.insects_by_role[role][insect_id] = insect_data
             self.insects_by_habitat[habitat][insect_id] = insect_data
             self.insects_by_event[event][insect_id] = insect_data
+            self.insect_by_ecological_impact[ecological_impact][insect_id] = insect_data
+            self.insect_population_density[population_density][insect_id] = insect_data
 
             # Actualizar ventanas de tiempo
             self._update_time_windows(species, role, event, event_time, habitat)
@@ -90,11 +88,9 @@ class InsectDataStore:
             self.event_trends['1min'][event][species] += 1
             self.species_trends['1min'][species] += 1
             self.time_windows_data['1min'][(species, role)].append(event)
-            self.time_windows_data['1min'][(species)]
 
         if now - event_time <= timedelta(minutes=2):
             self.time_windows_data['2min'][(species, role)].append(event)
-            self.time_windows_data['2min'][(species)]
 
 
         if now - event_time <= timedelta(minutes=5):
@@ -102,7 +98,6 @@ class InsectDataStore:
             self.event_trends['5min'][event][species] += 1
             self.species_trends['5min'][species] += 1
             self.time_windows_data['5min'][(species, role)].append(event)
-            self.time_windows_data['5min'][(species)]
 
         if now - event_time <= timedelta(minutes=15):
             self.time_windows['15min'][(species, role)] += 1
@@ -180,13 +175,6 @@ class InsectDataStore:
                 return insects[:limit] if limit else insects
             return []
 
-    def cantidad(self, window):
-        with self.lock:
-            if window not in self.time_windows_data:
-                raise ValueError("Ventana no válida. Usar: '1min', '2min', '5min'")
-            else:
-                return self.time_windows_data[window]
-
     def query_by_habitat_and_event(self, habitat, event, limit=10):
         """Consulta insectos por hábitat y evento"""
         with self.lock:
@@ -199,12 +187,54 @@ class InsectDataStore:
                             break
             return results
 
+    def cantidad(self, window):
+        with self.lock:
+            if window not in self.time_windows_data:
+                raise ValueError("Ventana no válida. Usar: '1min', '2min', '5min'")
+            else:
+                especies = set()
+                for (species, _), eventos in self.time_windows_data[window].items():
+                    especies.add(species)
+                return {esp: 1 for esp in especies}
+
     def get_insects_in_time_window(self, window):
         with self.lock:
             if window not in self.time_windows_data:
                 raise ValueError("Ventana no válida. Usar: '1min', '2min', '5min'")
             else:
                 return self.time_windows_data[window]
+
+    def eventos_recientes(self, window_seconds=300):
+        """ Devuelve eventos de los últimos X segundos """
+        now = datetime.now()
+        recientes = []
+        with self.lock:
+            for data in self.insects_by_id.values():
+                t_evt = datetime.strptime(data["eventTime"].split()[0], "%Y-%m-%dT%H:%M:%S")
+                if (now - t_evt).total_seconds() <= window_seconds:
+                    recientes.append(data)
+        return recientes
+
+    def get_insects(self):
+        with self.lock:
+            return self.insects_by_id.copy()
+
+    def query_ecological_impact_and_density(self, limit=10):
+        """Consulta insectos con su ecologicalImpact y populationDensity"""
+        with self.lock:
+            results = []
+            for insect_id, data in self.insects_by_id.items():
+                result = {
+                    "id": insect_id,
+                    "ecologicalImpact": data["ecologicalImpact"],
+                    "populationDensity": data["populationDensity"],
+                    "species": data["insect"]["species"],
+                    "eventTime": data["eventTime"]
+                }
+                results.append(result)
+                if limit and len(results) >= limit:
+                    break
+            return results
 
 # Crear el almacén de datos
 data_store = InsectDataStore()
@@ -247,17 +277,51 @@ def handle_query_client(conn, data_store):
                 window = query["params"]["window"]
                 data = data_store.get_insects_in_time_window(window)
                 response = {"status": "ok", "data": data}
+            elif query["type"] == "minwise":
+                window = query["params"]["window"]
+                data = data_store.get_insects_in_time_window(window)
+                response = {"status": "ok", "data": data}
             elif query["type"] == "cantidad":
                 window = query["params"]["window"]
                 cantidad = data_store.cantidad(window)
                 response = {"status": "ok", "data": cantidad}
             elif query["type"] == "dgim_filter":
                 window = query["params"]["window"]  # Ejemplo: "5min" o "1hour"
-                data = data_store.get_insects_in_time_window(window)
+                data6 = data_store.get_insects_in_time_window(window)
+                response = {"status": "ok", "data": data6}
+            elif query["type"] == "random_walk":
+                window = int(query["params"].get("window", 300))
+                start = query["params"]["start"]
+                steps = int(query["params"].get("steps", 5))
+                eventos = data_store.eventos_recientes(window)
+                if not eventos:
+
+                    response = {"status": "error", "message": "No hay eventos en la ventana"}
+
+                else:
+
+                    G = construir_grafo_desde_eventos(eventos)
+                    print(" Eventos recibidos:", len(eventos))
+                    print(" Nodos del grafo:", list(G.nodes()))
+                    print(" Aristas del grafo:", list(G.edges()))
+
+                    try:
+
+                        camino = random_walk_habitat(G, start, steps)
+                        response = {"status": "ok", "data": camino}
+
+                    except ValueError as e:
+
+                        response = {"status": "error", "message": str(e)}
+            elif query["type"] == "eco_density":
+                limit = query["params"].get("limit", 10)
+                data = data_store.query_ecological_impact_and_density(limit)
                 response = {"status": "ok", "data": data}
-            elif query["type"] == "minwise":
-                window = query["params"]["window"]
-                data = data_store.get_insects_in_time_window(window)
+            elif query["type"] == "mapreduce":
+                data = data_store.get_insects()
+                response = {"status": "ok", "data": data}
+            elif query["type"] == "markov":
+                data = data_store.get_insects()
                 response = {"status": "ok", "data": data}
 
             conn.sendall(pickle.dumps(response))
@@ -346,7 +410,7 @@ def process_kafka_messages(data_store):
                 data_store.add_insect(data)
 
                 # Solo mostrar cada 1000 mensajes para no saturar la terminal
-                if message_count % 20 == 0:
+                if message_count % 1 == 0:
                     print(
                         f"🔄 Procesados {message_count} mensajes. Último: {data['insect']['species']} ({data['event']})")
 
